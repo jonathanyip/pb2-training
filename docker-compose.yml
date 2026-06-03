@@ -1,0 +1,20 @@
+services:
+  api:
+    build: .
+    command: uvicorn pb2app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - PB2_CONFIG=/data/config.yaml
+    volumes:
+      - ./config.yaml:/data/config.yaml:ro
+      - ./data:/data
+
+  worker:
+    build: .
+    command: python -m pb2app.worker
+    environment:
+      - PB2_CONFIG=/data/config.yaml
+    volumes:
+      - ./config.yaml:/data/config.yaml:ro
+      - ./data:/data
