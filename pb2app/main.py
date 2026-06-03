@@ -65,11 +65,13 @@ def create_videos(payload: YTAddRequest):
 
 @app.post(f"{API_PREFIX}/videos/upload")
 def upload_video(file: UploadFile = File(...)):
+    filename = file.filename or "upload.mp4"
+    ext = (Path(filename).suffix.lstrip(".") or "mp4").lower()
     with SessionLocal() as db:
-        video = Video(source_type="upload", original_filename=file.filename or "upload.mp4", title=file.filename or "upload.mp4", status="pending", container="mp4")
+        video = Video(source_type="upload", original_filename=filename, title=filename, status="pending", container=ext)
         db.add(video)
         db.flush()
-        source = storage.absolute(storage.video_source_path(video.id, "mp4"))
+        source = storage.absolute(storage.video_source_path(video.id, ext))
         with source.open("wb") as f:
             shutil.copyfileobj(file.file, f)
         job = IngestJob(video_id=video.id, kind="sample", state="queued", payload={"uploaded": True})
@@ -280,6 +282,7 @@ def list_models():
                 "is_active": m.is_active,
                 "is_bootstrap": m.is_bootstrap,
                 "base_model_id": m.base_model_id,
+                "base_weights": m.base_weights,
                 "trained_frames": trained_count,
                 "metrics": m.metrics,
             })

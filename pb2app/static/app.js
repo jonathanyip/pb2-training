@@ -398,7 +398,7 @@ function renderModels() {
   const byId = Object.fromEntries(state.models.items.map((m) => [m.id, m]));
   for (const m of state.models.items) {
     const lineage = m.is_bootstrap
-      ? `seeded (${m.metrics && m.metrics.base_weights ? m.metrics.base_weights : 'bootstrap'})`
+      ? `seeded (${m.base_weights || 'bootstrap'})`
       : `trained from ${m.base_model_id && byId[m.base_model_id] ? byId[m.base_model_id].name : 'scratch'}`;
     const map = m.metrics && (m.metrics.map50 !== undefined) ? ` · mAP ${m.metrics.map50}` : '';
     const row = el('div', { class: `model-row${m.id === state.models.selected ? ' selected' : ''}`, onclick: () => { state.models.selected = m.id; renderModels(); } },
