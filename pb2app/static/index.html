@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>pb2-training</title>
+  <style>
+    body { font-family: sans-serif; margin: 16px; }
+    nav button { margin-right: 8px; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    canvas { border: 1px solid #ccc; max-width: 100%; }
+    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    th, td { border: 1px solid #ddd; padding: 6px; font-size: 13px; }
+    .row { display: flex; gap: 16px; align-items: flex-start; }
+    .panel { min-width: 260px; }
+    .kbd { border: 1px solid #999; padding: 2px 6px; border-radius: 4px; }
+    input, textarea, select { width: 100%; margin-top: 4px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h1>pb2-training</h1>
+  <nav>
+    <button onclick="showTab('upload')">Upload</button>
+    <button onclick="showTab('train')">Train</button>
+    <button onclick="showTab('validate')">Validate</button>
+    <button onclick="showTab('settings')">Settings</button>
+  </nav>
+
+  <section id="tab-upload" class="tab active">
+    <h2>Upload</h2>
+    <label>YouTube URLs (one per line)</label>
+    <textarea id="ytUrls" rows="4"></textarea>
+    <button onclick="addUrls()">Add to queue</button>
+    <hr />
+    <input id="uploadFile" type="file" />
+    <button onclick="uploadFile()">Upload file</button>
+    <h3>Videos</h3>
+    <button onclick="loadVideos()">Refresh</button>
+    <table id="videosTable"><thead><tr><th>Title</th><th>Source</th><th>Frames</th><th>Status</th><th>Progress</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section id="tab-train" class="tab">
+    <h2>Train</h2>
+    <div class="row">
+      <div>
+        <canvas id="trainCanvas" width="960" height="540"></canvas>
+        <div id="trainMeta"></div>
+      </div>
+      <div class="panel">
+        <p><span class="kbd">A</span> Back/Undo</p>
+        <p><span class="kbd">W</span> Reset box</p>
+        <p><span class="kbd">D</span> Next/Save</p>
+        <button onclick="undoCurrent('training')">A</button>
+        <button onclick="resetBox('training')">W</button>
+        <button onclick="saveNext('training')">D</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-validate" class="tab">
+    <h2>Validate</h2>
+    <div class="row">
+      <div>
+        <canvas id="validateCanvas" width="960" height="540"></canvas>
+        <div id="validateMeta"></div>
+      </div>
+      <div class="panel">
+        <p><span class="kbd">A</span> Back/Undo</p>
+        <p><span class="kbd">W</span> Reset box</p>
+        <p><span class="kbd">D</span> Approve/Next</p>
+        <button onclick="undoCurrent('validation')">A</button>
+        <button onclick="resetBox('validation')">W</button>
+        <button onclick="saveNext('validation')">D</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-settings" class="tab">
+    <h2>Settings</h2>
+    <div id="models"></div>
+    <button onclick="loadSettings()">Refresh settings</button>
+    <pre id="settingsJson"></pre>
+  </section>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

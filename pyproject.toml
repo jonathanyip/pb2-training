@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pb2-training"
+version = "0.1.0"
+description = "Pickleball ball detection training app"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.112.0",
+  "uvicorn>=0.30.0",
+  "sqlalchemy>=2.0.0",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.3.0",
+  "typer>=0.12.0",
+  "python-multipart>=0.0.9",
+  "PyYAML>=6.0.1",
+  "Pillow>=10.3.0"
+]
+
+[project.scripts]
+pb2 = "pb2app.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["pb2core*", "pb2app*"]
