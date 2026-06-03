@@ -8,9 +8,9 @@
 │                                                                        │
 │  ┌────────────────────────┐         ┌──────────────────────────────┐  │
 │  │  Frontend (SPA)        │  HTTP   │  Backend API (FastAPI)        │  │
-│  │  3 tabs: Upload /      │◀───────▶│  - REST endpoints (see api.md)│  │
-│  │  Train / Validate      │  +WS    │  - serves frame images        │  │
-│  │  canvas bbox + WASD    │         │  - enqueues ingestion jobs    │  │
+│  │  4 tabs: Upload /      │◀───────▶│  - REST endpoints (see api.md)│  │
+│  │  Train / Validate /    │  +WS    │  - serves frame images        │  │
+│  │  Settings · canvas+WASD│         │  - enqueues ingestion jobs    │  │
 │  └────────────────────────┘         └──────────────┬───────────────┘  │
 │                                                     │ imports          │
 │  ┌────────────────────────┐                        ▼                  │
@@ -22,8 +22,8 @@
 │                                      │  - dataset export             │  │
 │  ┌────────────────────────┐ imports  └──────────────┬───────────────┘  │
 │  │  CLI (pb2 ...)         │─────────────────────────┘                  │
-│  │  train / set-current / │                                            │
-│  │  reanalyze / export    │                                            │
+│  │  bootstrap / train /   │                                            │
+│  │  set-active / reanalyze│                                            │
 │  └────────────────────────┘                                            │
 └───────────────┬─────────────────────────────┬────────────────────────┘
                 │                              │
@@ -50,25 +50,32 @@ shares all of it.
 - **Storage layout** — functions that compute paths for a video or a frame so
   there is exactly one source of truth for where files live (see
   [storage.md](./storage.md)).
-- **Config loading** — parses and validates the config file
+- **Config loading** — reads bootstrap keys from the YAML file and runtime
+  settings from the `settings` table, seeding the table on first boot
   ([configuration.md](./configuration.md)).
-- **YOLO wrapper** — load the current model, run inference on a frame, extract
-  ball (class 32) boxes, and convert to/from YOLO label format.
+- **YOLO wrapper** — load the **active** model (`models.is_active`), run inference
+  on a frame, extract ball (class 32) boxes, and convert to/from YOLO label
+  format.
 - **Ingestion primitives** — download (yt_dlp), sample frames, pre-label.
 - **Dataset export** — turn DB labels into a YOLO-format dataset on disk.
+- **Training / model registry** — compute the incremental new-frame set, train a
+  model, register it with lineage, and record `model_trained_frames`
+  ([data-model.md](./data-model.md), [cli.md](./cli.md)).
 
 ```
 pb2core/
-├── config.py          # load + validate config
+├── config.py          # YAML bootstrap + DB-backed runtime settings
 ├── db/
-│   ├── models.py      # ORM models (Video, Frame, Label, Model, ...)
+│   ├── models.py      # ORM models (Video, Frame, Label, Model,
+│   │                  #   ModelTrainedFrame, Setting, ...)
 │   ├── session.py     # engine/session factory
 │   └── migrations/    # schema migrations
 ├── storage.py         # path computation, collision handling
-├── yolo.py            # model load, inference, label conversion
+├── yolo.py            # active-model load, inference, label conversion
 ├── ingest.py          # download, sample, pre-label
 ├── dataset.py         # export DB -> YOLO dataset
-└── reanalyze.py       # re-run model over training frames
+├── training.py        # incremental frame selection + train + register
+└── reanalyze.py       # re-run active model over training frames
 ```
 
 ## Tech stack

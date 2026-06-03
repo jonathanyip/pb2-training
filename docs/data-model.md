@@ -15,9 +15,12 @@ videos (1) ───< frames (1) ───< labels
                   └── belongs to a queue (training | validation)
                   └── has a status   (unprocessed | processed)
 
-models        — registry of YOLO weight files; one is "current"
-ingest_jobs   — async work items for the worker
-events        — optional audit log (undo history, model upgrades)
+models                — registry of named, versioned YOLO weights; one is "active"
+  └─ base_model_id    — self-FK: lineage (V2 was trained from V1)
+model_trained_frames  — which frames each model was trained on (incremental training)
+settings              — DB-backed config edited from the Settings tab (Tab 4)
+ingest_jobs           — async work items for the worker
+events                — optional audit log (undo history, model upgrades)
 ```
 
 ## Tables
@@ -84,22 +87,83 @@ Rules:
 
 ### `models`
 
-Registry of YOLO weight files so the app and CLI agree on "the current model".
+Registry of **named, versioned** YOLO weights so the app and CLI agree on which
+model is active and how each model was produced.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` (PK) | UUID | |
+| `name` | text, unique | human label, e.g. `YOLOX_V1`, `YOLOX_V2` |
 | `version` | int | monotonically increasing (`v0001`, `v0002`, …) |
 | `path` | text | relative path under `models/` |
-| `is_current` | bool | exactly one row is true |
-| `trained_from_export_id` | UUID, null | dataset used to train it (provenance) |
-| `base_model` | text, null | weights this was fine-tuned from |
+| `is_active` | bool | exactly one row is true — the model used for post-analysis |
+| `is_bootstrap` | bool | true for the seeded first model (no training data behind it) |
+| `base_model_id` | UUID, null | self-FK → `models.id`; the model this was fine-tuned from (lineage). Null for a bootstrap model |
+| `trained_from_export_id` | UUID, null | dataset snapshot used to train it (provenance) |
+| `base_weights` | text, null | external weights file fine-tuned from (e.g. `yolov8n.pt`) when there is no parent model |
 | `metrics` | json, null | mAP etc. captured at training time |
 | `notes` | text, null | |
 | `created_at` | timestamp | |
 
-The app reads the current model via this table (or the `models/current`
-symlink); the CLI's `set-current` flips `is_current`. See [cli.md](./cli.md).
+- The **active** model (`is_active`) is what ingestion/post-analysis and
+  `reanalyze` use for pre-labeling. It is selectable from the **Settings tab**
+  (see [ui-settings.md](./ui-settings.md)) and via the CLI's `set-active`.
+- `base_model_id` records lineage: "`YOLOX_V2` was trained from `YOLOX_V1`". This
+  is what lets incremental training know an ancestor chain to subtract already-
+  trained frames from (see below and [cli.md](./cli.md)).
+- `is_bootstrap` marks the seeded first model so the UI/CLI can show that it has
+  no training provenance.
+
+### `model_trained_frames`
+
+The **frame-tracking mechanism** that records, for each model, exactly which
+frames went into its training set. This is what enables *incremental* training:
+"`YOLOX_V1` trained on frames 1..1000, `YOLOX_V2` trained on 1001..5000", so a
+new model only trains on frames not already learned by its lineage.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `model_id` (FK) | UUID | → `models.id` |
+| `frame_id` (FK) | UUID | → `frames.id` |
+| `created_at` | timestamp | when this frame was assigned to the model's training set |
+
+Primary key `(model_id, frame_id)`; indexed both ways. Populated by `pb2 train`
+when a model is created (see [cli.md](./cli.md)).
+
+**Computing "new frames" for the next model.** To train `YOLOX_V2` from
+`YOLOX_V1`, the CLI selects the eligible labeled frames and subtracts every frame
+already trained by `YOLOX_V1` and its ancestors:
+
+```
+eligible      = frames where status=processed            (verified ground truth)
+already_known = union of model_trained_frames.frame_id
+                for V1 and every ancestor via base_model_id
+new_frames    = eligible − already_known
+```
+
+`YOLOX_V2` then trains on `new_frames` (optionally still validating against a
+held-out split), and a new `model_trained_frames` row is written for each frame
+in `new_frames`. Because membership is an explicit set rather than an index
+range, it stays correct even when frames are added, deleted, or re-labeled out of
+order.
+
+### `settings`
+
+DB-backed configuration edited from the **Settings tab** (Tab 4). This replaces
+the static config file as the runtime source of truth; the file now only seeds
+defaults on first boot (see [configuration.md](./configuration.md)).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `key` (PK) | text | dotted key, e.g. `sampling.every_n_frames` |
+| `value` | json | typed value |
+| `updated_at` | timestamp | |
+| `updated_by` | text, null | optional actor |
+
+A single-row variant (`settings(id=1, data json)`) is equally acceptable; the
+key/value form makes partial updates and auditing easier. The active-model
+selection is stored as `models.is_active` (not in `settings`) so referential
+integrity is enforced by a real FK.
 
 ### `ingest_jobs`
 

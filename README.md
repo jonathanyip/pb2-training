@@ -17,7 +17,7 @@ The full design lives in [`docs/`](./docs/README.md):
 - [Overview](./docs/overview.md) · [Architecture](./docs/architecture.md)
 - [Storage layout](./docs/storage.md) · [Data model](./docs/data-model.md) · [Configuration](./docs/configuration.md)
 - [Ingestion pipeline](./docs/ingestion-pipeline.md)
-- UI: [Upload](./docs/ui-upload.md) · [Train](./docs/ui-training.md) · [Validate](./docs/ui-validation.md)
+- UI: [Upload](./docs/ui-upload.md) · [Train](./docs/ui-training.md) · [Validate](./docs/ui-validation.md) · [Settings](./docs/ui-settings.md)
 - [API](./docs/api.md) · [CLI](./docs/cli.md) · [Deployment](./docs/deployment.md)
 
 Start at [docs/README.md](./docs/README.md).

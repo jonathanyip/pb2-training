@@ -2,7 +2,7 @@
 
 The backend is a FastAPI service. All endpoints are JSON unless noted. Paths are
 relative to the server root (e.g. `/api/v1`). This reference is the contract the
-three tabs in the SPA consume; the auto-generated OpenAPI doc is the source of
+four tabs in the SPA consume; the auto-generated OpenAPI doc is the source of
 truth at runtime.
 
 Conventions:
@@ -110,17 +110,53 @@ Queue size for the header badge (e.g. `queue=training&status=unprocessed`).
 { "count": 842 }
 ```
 
-## Models (read-only from the app)
+## Settings (Tab 4)
 
-### `GET /models`
-List registered models and which is current (provenance shown in the UI).
+### `GET /settings`
+Returns the effective runtime settings from the `settings` table (see
+[configuration.md](./configuration.md)) plus their schema for form rendering.
 ```json
-{ "current": { "id": "uuid", "version": 3, "path": "models/v0003.pt" },
-  "items": [ { "id": "uuid", "version": 1, "is_current": false }, ... ] }
+{ "values": { "sampling.every_n_frames": 15, "labeling.max_undo_steps": 20, ... },
+  "schema": { "sampling.every_n_frames": { "type": "int", "min": 1 }, ... } }
 ```
 
-Model creation and `set-current` are performed by the **CLI**, not the API, to
-keep training/ops out of the request path. See [cli.md](./cli.md).
+### `PUT /settings`
+Upsert one or more runtime settings (validated against the schema). Bootstrap
+keys (`storage.*`, `database.*`, `server.*`) are rejected.
+```json
+// request
+{ "values": { "sampling.every_n_frames": 10, "labeling.max_undo_steps": 30 } }
+// response
+{ "updated": ["sampling.every_n_frames", "labeling.max_undo_steps"] }
+```
+
+## Models
+
+### `GET /models`
+List registered models with name, lineage, and which is active.
+```json
+{ "active": { "id": "uuid", "name": "YOLOX_V2", "version": 2,
+              "base_model": "YOLOX_V1" },
+  "items": [
+    { "id": "uuid", "name": "YOLOX_V2", "version": 2, "is_active": true,
+      "base_model_id": "uuid", "trained_frames": 4000, "metrics": {"map50": 0.71} },
+    { "id": "uuid", "name": "YOLOX_V1", "version": 1, "is_active": false,
+      "base_model_id": null, "trained_frames": 1000, "metrics": {"map50": 0.58} },
+    { "id": "uuid", "name": "bootstrap", "version": 0, "is_bootstrap": true,
+      "trained_frames": 0 }
+  ] }
+```
+
+### `POST /models/{id}/activate`
+Make the given model the active one used for post-analysis (the Settings tab's
+"Set active"; mirrors `pb2 set-active`). Flips `models.is_active`.
+```json
+{ "id": "uuid", "name": "YOLOX_V2", "is_active": true }
+```
+
+Model **creation**, **training**, and **bootstrap** are performed by the **CLI**,
+not the API, to keep training/ops out of the request path. The API only lists
+models and flips the active pointer. See [cli.md](./cli.md).
 
 ## Notes
 

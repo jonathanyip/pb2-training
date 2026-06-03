@@ -30,21 +30,26 @@ drill down as needed.
 | 7 | [ui-upload.md](./ui-upload.md) | Tab 1 — Upload UX & paginated video list |
 | 8 | [ui-training.md](./ui-training.md) | Tab 2 — Train UX, bounding-box drawing, WASD hotkeys |
 | 9 | [ui-validation.md](./ui-validation.md) | Tab 3 — Validate UX, pre-populated boxes |
-| 10 | [api.md](./api.md) | Backend HTTP API reference |
-| 11 | [cli.md](./cli.md) | CLI tool: training, model upgrade, re-analysis |
-| 12 | [deployment.md](./deployment.md) | Docker / docker-compose, volumes, env vars |
+| 10 | [ui-settings.md](./ui-settings.md) | Tab 4 — Settings UX, DB-backed config, active-model selection |
+| 11 | [api.md](./api.md) | Backend HTTP API reference |
+| 12 | [cli.md](./cli.md) | CLI tool: bootstrap, incremental training, model upgrade, re-analysis |
+| 13 | [deployment.md](./deployment.md) | Docker / docker-compose, volumes, env vars |
 
 ## Design principles
 
-- **Everything configurable lives in one config file** (see
-  [configuration.md](./configuration.md)). Frame sample rate, the YOLO model
-  path, undo depth, pagination size, and storage root are all config-driven.
-- **One shared library, two entrypoints.** The web app and the CLI tool both
+- **Configuration lives in the database, edited in the UI.** Runtime settings
+  (sample rate, undo depth, pagination, inference thresholds, and the active
+  model) live in a `settings` table and are edited in the **Settings tab**; only
+  a tiny bootstrap file says where the DB and storage live. See
+  [configuration.md](./configuration.md) and [ui-settings.md](./ui-settings.md).
+- **One shared library, multiple entrypoints.** The web app, worker, and CLI all
   import the same `pb2core` package so the database schema, storage layout, and
   YOLO logic are defined exactly once. See [architecture.md](./architecture.md).
 - **Every frame has a stable UUID.** Frames are tracked by UUID end-to-end so
   labels, files, and database rows never drift apart. See
   [data-model.md](./data-model.md).
-- **The model is a hot-swappable artifact.** The app always loads "the current
-  model" by path; the CLI produces new versioned weights that become current.
-  See [cli.md](./cli.md).
+- **Models are named, versioned, hot-swappable artifacts with lineage.** A
+  bootstrap model seeds the system; each new model is trained *from* a parent on
+  only the frames not already trained (tracked in `model_trained_frames`), and
+  the **active** model is selected by a DB pointer. See
+  [data-model.md](./data-model.md) and [cli.md](./cli.md).

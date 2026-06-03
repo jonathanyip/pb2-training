@@ -81,7 +81,7 @@ The CLI shares the image and the volume, so operations run against the same data
 ```bash
 docker compose run --rm worker pb2 stats
 docker compose run --rm worker pb2 train --export auto
-docker compose run --rm worker pb2 set-current 4
+docker compose run --rm worker pb2 set-active YOLOX_V2
 docker compose run --rm worker pb2 reanalyze
 ```
 
@@ -92,9 +92,11 @@ workflow.
 
 - On API/worker startup the app runs `pb2 db migrate` (Alembic) to ensure the
   schema is current before serving.
-- On first boot, if no model exists, the app falls back to
-  `model.bootstrap_weights` (e.g. stock COCO YOLO that recognizes class 32) so
-  ingestion pre-labeling works before the first custom training run.
+- On first boot the `settings` table is seeded from the bootstrap YAML defaults
+  (see [configuration.md](./configuration.md)), and you seed the first model with
+  `pb2 bootstrap --name YOLOX_V1 --weights <model.bootstrap_weights>` (e.g. stock
+  COCO YOLO that recognizes class 32) so ingestion pre-labeling works before the
+  first custom training run. See [cli.md](./cli.md).
 
 ## GPU notes
 

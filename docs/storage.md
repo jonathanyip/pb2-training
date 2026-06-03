@@ -82,7 +82,7 @@ hand-builds paths**. `pb2core.storage` exposes helpers such as:
 - `video_source_path(video_uuid, container)` 
 - `frame_dir(video_uuid)`
 - `frame_path(video_uuid, frame_uuid)`
-- `models_dir()`, `current_model_path()`
+- `models_dir()`, `active_model_path()`
 - `dataset_dir(export_uuid)`
 
 All return paths relative to `storage.root`; an `absolute()` helper joins them

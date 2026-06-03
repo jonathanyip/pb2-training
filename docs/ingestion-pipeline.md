@@ -64,7 +64,8 @@ Each kept frame is:
 
 ### 4. Pre-label & route
 
-Load the **current model** (`model.current_path`) once, then for each sampled
+Load the **active model** (`models.is_active` — see [data-model.md](./data-model.md))
+once, then for each sampled
 frame run inference (`model.inference.*`) and look for the configured
 `model.ball_class_id` (32 = sports ball):
 
