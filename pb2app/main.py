@@ -223,10 +223,26 @@ def frame_count(queue: str, status: str):
 
 @app.get(f"{API_PREFIX}/settings")
 def get_settings():
+    from pb2core.defaults import DEFAULT_RUNTIME_SETTINGS
+
     with SessionLocal() as db:
         values = get_runtime_settings(db)
-    schema = {k: {"type": "string"} for k in values}
-    return {"values": values, "schema": schema}
+
+    def infer_type(value) -> str:
+        if isinstance(value, bool):
+            return "boolean"
+        if isinstance(value, int):
+            return "integer"
+        if isinstance(value, float):
+            return "number"
+        return "string"
+
+    schema = {}
+    for key, value in values.items():
+        default = DEFAULT_RUNTIME_SETTINGS.get(key, value)
+        ref = value if value is not None else default
+        schema[key] = {"type": infer_type(ref), "group": key.split(".")[0]}
+    return {"values": values, "schema": schema, "defaults": DEFAULT_RUNTIME_SETTINGS}
 
 
 @app.put(f"{API_PREFIX}/settings")

@@ -37,7 +37,10 @@ def process_ingest_job(db, job: IngestJob) -> None:
 
     source = storage.absolute(storage.video_source_path(video.id, video.container))
     source.parent.mkdir(parents=True, exist_ok=True)
-    source.write_text("source placeholder\n", encoding="utf-8")
+    # Uploaded videos already have their source file on disk; only write a
+    # placeholder for sources we would otherwise have downloaded (e.g. YouTube).
+    if video.source_type != "upload" and not source.exists():
+        source.write_text("source placeholder\n", encoding="utf-8")
 
     video.status = "sampling"
     job.kind = "sample"

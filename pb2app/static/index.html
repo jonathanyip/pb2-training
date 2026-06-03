@@ -1,87 +1,165 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>pb2-training</title>
-  <style>
-    body { font-family: sans-serif; margin: 16px; }
-    nav button { margin-right: 8px; }
-    .tab { display: none; }
-    .tab.active { display: block; }
-    canvas { border: 1px solid #ccc; max-width: 100%; }
-    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
-    th, td { border: 1px solid #ddd; padding: 6px; font-size: 13px; }
-    .row { display: flex; gap: 16px; align-items: flex-start; }
-    .panel { min-width: 260px; }
-    .kbd { border: 1px solid #999; padding: 2px 6px; border-radius: 4px; }
-    input, textarea, select { width: 100%; margin-top: 4px; margin-bottom: 8px; }
-  </style>
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <h1>pb2-training</h1>
-  <nav>
-    <button onclick="showTab('upload')">Upload</button>
-    <button onclick="showTab('train')">Train</button>
-    <button onclick="showTab('validate')">Validate</button>
-    <button onclick="showTab('settings')">Settings</button>
-  </nav>
-
-  <section id="tab-upload" class="tab active">
-    <h2>Upload</h2>
-    <label>YouTube URLs (one per line)</label>
-    <textarea id="ytUrls" rows="4"></textarea>
-    <button onclick="addUrls()">Add to queue</button>
-    <hr />
-    <input id="uploadFile" type="file" />
-    <button onclick="uploadFile()">Upload file</button>
-    <h3>Videos</h3>
-    <button onclick="loadVideos()">Refresh</button>
-    <table id="videosTable"><thead><tr><th>Title</th><th>Source</th><th>Frames</th><th>Status</th><th>Progress</th></tr></thead><tbody></tbody></table>
-  </section>
-
-  <section id="tab-train" class="tab">
-    <h2>Train</h2>
-    <div class="row">
-      <div>
-        <canvas id="trainCanvas" width="960" height="540"></canvas>
-        <div id="trainMeta"></div>
-      </div>
-      <div class="panel">
-        <p><span class="kbd">A</span> Back/Undo</p>
-        <p><span class="kbd">W</span> Reset box</p>
-        <p><span class="kbd">D</span> Next/Save</p>
-        <button onclick="undoCurrent('training')">A</button>
-        <button onclick="resetBox('training')">W</button>
-        <button onclick="saveNext('training')">D</button>
-      </div>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">●</span>
+      <span class="brand-name">pb2<span class="brand-dim">-training</span></span>
     </div>
-  </section>
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="upload">Upload</button>
+      <button class="tab-btn" data-tab="train">Train</button>
+      <button class="tab-btn" data-tab="validate">Validate</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+    <div class="topbar-right" id="topbarRight"></div>
+  </header>
 
-  <section id="tab-validate" class="tab">
-    <h2>Validate</h2>
-    <div class="row">
-      <div>
-        <canvas id="validateCanvas" width="960" height="540"></canvas>
-        <div id="validateMeta"></div>
+  <main class="content">
+    <!-- ───────────────────────── Upload ───────────────────────── -->
+    <section id="tab-upload" class="tab active">
+      <div class="card">
+        <div class="card-head">
+          <h2>Add videos</h2>
+          <div class="seg" id="sourceToggle">
+            <button class="seg-btn active" data-source="youtube">YouTube URLs</button>
+            <button class="seg-btn" data-source="upload">Upload file</button>
+          </div>
+        </div>
+
+        <div id="sourceYoutube" class="source-pane">
+          <label class="field-label" for="ytUrls">One URL per line — batch add</label>
+          <textarea id="ytUrls" rows="4" placeholder="https://youtu.be/aaa&#10;https://youtu.be/bbb"></textarea>
+          <div class="actions-right">
+            <button class="btn btn-primary" id="addUrlsBtn">Add to queue</button>
+          </div>
+        </div>
+
+        <div id="sourceUpload" class="source-pane hidden">
+          <div id="dropzone" class="dropzone">
+            <input id="uploadFile" type="file" accept="video/*" hidden />
+            <div class="dropzone-inner">
+              <div class="dropzone-icon">⬆</div>
+              <p><strong>Drag &amp; drop</strong> a video here, or <button class="link" id="browseBtn" type="button">browse</button></p>
+              <p class="muted" id="uploadFileName">No file selected</p>
+            </div>
+          </div>
+          <div class="actions-right">
+            <button class="btn btn-primary" id="uploadBtn" disabled>Upload file</button>
+          </div>
+        </div>
       </div>
-      <div class="panel">
-        <p><span class="kbd">A</span> Back/Undo</p>
-        <p><span class="kbd">W</span> Reset box</p>
-        <p><span class="kbd">D</span> Approve/Next</p>
-        <button onclick="undoCurrent('validation')">A</button>
-        <button onclick="resetBox('validation')">W</button>
-        <button onclick="saveNext('validation')">D</button>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Videos <span class="count-pill" id="videoCount">0</span></h2>
+          <div class="list-controls">
+            <input id="videoSearch" class="search" type="search" placeholder="Search by title…" />
+            <button class="btn" id="refreshVideosBtn" title="Refresh">↻</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Title</th><th>Source</th><th>Frames</th><th>Queues</th>
+                <th>Status</th><th class="col-progress">Progress</th><th>Added</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="videosBody"></tbody>
+          </table>
+        </div>
+        <div id="videosEmpty" class="empty hidden">
+          <p>No videos yet.</p>
+          <p class="muted">Add a YouTube URL or upload a file above to get started.</p>
+        </div>
+        <div class="pager" id="videosPager"></div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section id="tab-settings" class="tab">
-    <h2>Settings</h2>
-    <div id="models"></div>
-    <button onclick="loadSettings()">Refresh settings</button>
-    <pre id="settingsJson"></pre>
-  </section>
+    <!-- ───────────────────────── Train ───────────────────────── -->
+    <section id="tab-train" class="tab">
+      <div class="labeler">
+        <div class="canvas-col">
+          <div class="canvas-wrap">
+            <canvas id="trainingCanvas" width="960" height="540"></canvas>
+            <div id="trainingOverlay" class="canvas-overlay hidden"></div>
+          </div>
+          <div class="frame-meta" id="trainingMeta"></div>
+        </div>
+        <aside class="instructions">
+          <h3>How to use</h3>
+          <p class="muted">Click &amp; drag on the image to draw a box around the ball. No box means “no ball”.</p>
+          <ul class="hotkeys">
+            <li><button class="hk" data-kind="training" data-act="undo"><kbd>A</kbd></button><span>Back / Undo</span></li>
+            <li><button class="hk" data-kind="training" data-act="reset"><kbd>W</kbd></button><span>Reset box</span></li>
+            <li><button class="hk hk-primary" data-kind="training" data-act="save"><kbd>D</kbd></button><span>Next / Save</span></li>
+          </ul>
+          <div class="queue-stat">
+            Training queue: <strong id="trainingRemaining">—</strong>
+          </div>
+        </aside>
+      </div>
+    </section>
 
-<script src="/static/app.js"></script>
+    <!-- ───────────────────────── Validate ───────────────────────── -->
+    <section id="tab-validate" class="tab">
+      <div class="labeler">
+        <div class="canvas-col">
+          <div class="canvas-wrap">
+            <canvas id="validationCanvas" width="960" height="540"></canvas>
+            <div id="validationOverlay" class="canvas-overlay hidden"></div>
+          </div>
+          <div class="frame-meta" id="validationMeta"></div>
+        </div>
+        <aside class="instructions">
+          <h3>How to use</h3>
+          <p class="muted">The box is the model’s guess. Confirm it, fix it, or clear it (<kbd>W</kbd>) if it isn’t the ball.</p>
+          <ul class="hotkeys">
+            <li><button class="hk" data-kind="validation" data-act="undo"><kbd>A</kbd></button><span>Back / Undo</span></li>
+            <li><button class="hk" data-kind="validation" data-act="reset"><kbd>W</kbd></button><span>Reset box</span></li>
+            <li><button class="hk hk-primary" data-kind="validation" data-act="save"><kbd>D</kbd></button><span>Approve / Next</span></li>
+          </ul>
+          <div class="queue-stat">
+            Validation queue: <strong id="validationRemaining">—</strong>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Settings ───────────────────────── -->
+    <section id="tab-settings" class="tab">
+      <div class="card">
+        <div class="card-head"><h2>Active model</h2></div>
+        <p class="muted">Used for pre-labeling during ingestion and CLI re-analysis.</p>
+        <div id="modelsList" class="models-list"></div>
+        <div class="actions-right">
+          <button class="btn btn-primary" id="setActiveBtn">Set active</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Runtime settings</h2>
+          <button class="btn" id="refreshSettingsBtn" title="Refresh">↻</button>
+        </div>
+        <div id="settingsForm"></div>
+        <div class="actions-right">
+          <button class="btn" id="resetSettingsBtn">Reset to defaults</button>
+          <button class="btn btn-primary" id="saveSettingsBtn">Save changes</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toasts" class="toasts"></div>
+
+  <script src="/static/app.js"></script>
 </body>
 </html>
