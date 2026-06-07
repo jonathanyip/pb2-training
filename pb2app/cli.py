@@ -50,7 +50,7 @@ def bootstrap(
             # An auto-downloadable LibreYOLO checkpoint name (e.g. LibreYOLO9t.pt);
             # base_weights stays authoritative and the detector resolves it on load.
             storage.absolute(path).write_text(f"bootstrap weights ref: {weights}\n", encoding="utf-8")
-        m = Model(name=name, version=version, path=str(path), is_bootstrap=True, base_weights=weights)
+        m = Model(name=name, version=version, path=path.as_posix(), is_bootstrap=True, base_weights=weights)
         if db.execute(select(Model).where(Model.is_active.is_(True))).scalar_one_or_none() is None:
             m.is_active = True
         db.add(m)

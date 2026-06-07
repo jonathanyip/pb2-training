@@ -277,5 +277,79 @@ docker run --rm -v pb2-data:/data -v "$(pwd):/backup" alpine \
 
 > **GPU note:** the published image is CPU/MPS-oriented. For CUDA-accelerated
 > training, run on an NVIDIA host with `--gpus all` and a CUDA-enabled PyTorch
-> base image, and raise `training.workers` in the **Settings** tab.
+> base image, and raise `training.workers` in the **Settings** tab. For a
+> dedicated Windows/Linux GPU box that shares the data dir, see
+> [Train on a separate GPU machine](#train-on-a-separate-gpu-machine) below.
+
+## Train on a separate GPU machine
+
+Labeling and ingestion can run in the Docker app (e.g. on a small always-on
+server) while the heavy **training** runs on a separate box with a real GPU
+(e.g. a Windows desktop with an NVIDIA card). Both just need to see the **same
+data directory** — typically a NAS share mounted on each host. The CLI is
+fully cross-platform and stores all paths relative to `storage.root`, so models,
+frames, and datasets are portable between Windows and Linux.
+
+### 1. Mount the shared data dir
+
+Mount the same storage the Docker app uses (the `/data` volume) on the GPU box,
+e.g. a NAS share at `Z:\pb2-training` on Windows or `/mnt/pb2-training` on Linux.
+
+### 2. Install the CLI + a CUDA build of PyTorch
+
+```powershell
+# Windows (PowerShell). Install Python 3.11+ and uv first.
+git clone <this-repo> ; cd pb2-training
+uv sync
+
+# IMPORTANT: uv sync may install CPU-only torch. Install the CUDA build so the
+# GPU is actually used (pick the cuXXX that matches your driver/toolkit):
+uv pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# Verify the GPU is visible:
+uv run python -c "import torch; print('cuda:', torch.cuda.is_available())"   # -> cuda: True
+```
+
+> ffmpeg and yt-dlp are **not** needed on the training box — only ingestion uses
+> them, and that stays in the Docker app. Training just reads the sampled frames.
+
+### 3. Point a config at the shared dir
+
+Create a `config.yaml` on the GPU box whose paths match the **same** NAS
+location the Docker app writes to (forward slashes work on Windows too):
+
+```yaml
+storage:
+  root: Z:/pb2-training            # the mounted NAS path
+database:
+  url: sqlite:///Z:/pb2-training/db.sqlite3
+```
+
+### 4. Train, then activate
+
+```powershell
+$env:PB2_CONFIG = "config.yaml"
+uv run pb2 train --name YOLOv9_V2 --from YOLOv9_V1
+uv run pb2 set-active YOLOv9_V2
+```
+
+`training.device: auto` (the default) auto-selects the CUDA GPU. For throughput,
+raise `training.workers` (e.g. to `8`) in the **Settings** tab — it defaults to
+`0` for macOS safety. If you hit a multiprocessing/spawn error on Windows, set it
+back to `0`. The new `data/models/vNNNN.pt` checkpoint lands on the shared dir and
+the Docker app picks it up automatically once it's the active model.
+
+### ⚠️ Don't write the SQLite DB from two hosts at once
+
+SQLite's file locking is **unreliable over SMB/NFS**, and here two machines share
+one DB file. Reads are fine, but **concurrent writes** (Docker ingestion +
+training finishing) risk `database is locked` or, in the worst case, corruption.
+Training only writes once (the new model row at the end), so the simplest safe
+pattern is:
+
+- Train when the Docker app is **idle** (no active ingest/labeling), **or**
+- Briefly **pause/stop** the Docker container for the duration of a training run.
+
+The frame images and `.pt` checkpoints over the network share are perfectly fine;
+it's only simultaneous SQLite **writes** you want to avoid.
 

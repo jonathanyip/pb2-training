@@ -38,10 +38,13 @@ def model_weights_ref(model: Model | None) -> Optional[str]:
     if model is None:
         return None
     if model.path:
+        # Stored paths are POSIX-relative; normalize any backslashes that may
+        # have been written by an older Windows run so they resolve on any OS.
+        rel = model.path.replace("\\", "/")
         try:
-            p = storage.absolute(Path(model.path))
+            p = storage.absolute(Path(rel))
         except ValueError:
-            p = Path(model.path)
+            p = Path(rel)
         if p.exists() and p.is_file() and p.stat().st_size > _MIN_WEIGHTS_BYTES:
             return str(p)
     if model.base_weights:
