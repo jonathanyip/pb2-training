@@ -6,25 +6,45 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete, func, or_, select
 
 from pb2app.schemas import LabelRequest, SettingsUpdateRequest, YTAddRequest
 from pb2core.config import get_bootstrap_config, get_runtime_settings
-from pb2core.db.models import Frame, IngestJob, Label, Model, ModelTrainedFrame, Setting, Video
+from pb2core.db.models import Event, Frame, IngestJob, Label, Model, ModelTrainedFrame, Setting, Video
 from pb2core.db.session import SessionLocal
 from pb2core.ingest import run_one_queued_job
 from pb2core.init_db import init_db
 from pb2core.storage import storage
 
-API_PREFIX = "/api/v1"
-
-app = FastAPI(title="pb2-training")
-app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
-
 cfg = get_bootstrap_config()
+# When hosted behind a reverse proxy under a sub-path (e.g. /pb2-training that is
+# forwarded unchanged), every route, the static mount and the docs live under it.
+BASE_PATH = cfg["server"]["base_path"]
+API_PREFIX = f"{BASE_PATH}/api/v1"
+STATIC_DIR = Path(__file__).parent / "static"
+
+app = FastAPI(
+    title="pb2-training",
+    docs_url=f"{BASE_PATH}/docs",
+    redoc_url=f"{BASE_PATH}/redoc",
+    openapi_url=f"{BASE_PATH}/openapi.json",
+)
+app.mount(f"{BASE_PATH}/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 app.add_middleware(CORSMiddleware, allow_origins=cfg["server"]["cors_origins"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+
+def render_index() -> str:
+    """Serve index.html, injecting the base path so the SPA resolves every
+    asset and API call relative to BASE_PATH (root hosting -> base href="/")."""
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    inject = (
+        f'<base href="{BASE_PATH}/">\n'
+        f'  <script>window.__BASE_PATH__ = "{BASE_PATH}";</script>'
+    )
+    return html.replace("<head>", f"<head>\n  {inject}", 1)
 
 
 @app.on_event("startup")
@@ -40,9 +60,15 @@ async def startup_event() -> None:
     asyncio.create_task(runner())
 
 
-@app.get("/")
+@app.get(BASE_PATH or "/")
 def root():
-    return FileResponse(Path(__file__).parent / "static" / "index.html")
+    return HTMLResponse(render_index())
+
+
+if BASE_PATH:
+    @app.get(f"{BASE_PATH}/")
+    def root_slash():
+        return HTMLResponse(render_index())
 
 
 @app.post(f"{API_PREFIX}/videos")
@@ -156,7 +182,13 @@ def get_next_frame(queue: str = Query(pattern="^(training|validation)$")):
             return {"frame": None, "remaining": 0}
         remaining = db.execute(select(func.count()).select_from(Frame).where(Frame.queue == queue, Frame.status == "unprocessed")).scalar_one()
         video = db.execute(select(Video).where(Video.id == frame.video_id)).scalar_one()
-        pre = db.execute(select(Label).where(Label.frame_id == frame.id, Label.source == "model")).scalars().first()
+        # Fresh frame (never human-reviewed): show the model's guess.
+        # Reopened/reviewed frame (has_ball is set): show whatever the human saved
+        # (which is None when they marked it "no ball").
+        if frame.has_ball is None:
+            pre = db.execute(select(Label).where(Label.frame_id == frame.id, Label.source == "model")).scalars().first()
+        else:
+            pre = db.execute(select(Label).where(Label.frame_id == frame.id, Label.source == "human")).scalars().first()
         return {
             "frame": {
                 "id": frame.id,
@@ -209,9 +241,9 @@ def reopen_frame(frame_id: str):
         frame = db.execute(select(Frame).where(Frame.id == frame_id)).scalar_one_or_none()
         if not frame:
             raise HTTPException(status_code=404, detail="frame not found")
+        # Re-queue the frame for review but keep the human's saved label and verdict
+        # so going "back" shows exactly what was saved.
         frame.status = "unprocessed"
-        frame.has_ball = None
-        db.execute(delete(Label).where(Label.frame_id == frame.id, Label.source == "human"))
         db.commit()
         return {"id": frame.id, "status": frame.status}
 
@@ -221,6 +253,107 @@ def frame_count(queue: str, status: str):
     with SessionLocal() as db:
         c = db.execute(select(func.count()).select_from(Frame).where(Frame.queue == queue, Frame.status == status)).scalar_one()
         return {"count": c}
+
+
+@app.get(f"{API_PREFIX}/videos/{{video_id}}/frames")
+def list_video_frames(
+    video_id: str,
+    page: int = 1,
+    size: int | None = None,
+    status: str | None = Query(default=None, pattern="^(unprocessed|processed)$"),
+    queue: str | None = Query(default=None, pattern="^(training|validation)$"),
+    has_ball: str | None = Query(default=None, pattern="^(true|false|unknown)$"),
+):
+    with SessionLocal() as db:
+        video = db.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
+        if not video:
+            raise HTTPException(status_code=404, detail="video not found")
+        runtime = get_runtime_settings(db)
+        page_size = size or int(runtime.get("ui.pagination_size", 24))
+
+        query = select(Frame).where(Frame.video_id == video_id)
+        if status:
+            query = query.where(Frame.status == status)
+        if queue:
+            query = query.where(Frame.queue == queue)
+        if has_ball == "true":
+            query = query.where(Frame.has_ball.is_(True))
+        elif has_ball == "false":
+            query = query.where(Frame.has_ball.is_(False))
+        elif has_ball == "unknown":
+            query = query.where(Frame.has_ball.is_(None))
+
+        total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
+        frames = db.execute(
+            query.order_by(Frame.frame_index.asc()).offset((page - 1) * page_size).limit(page_size)
+        ).scalars().all()
+
+        frame_ids = [f.id for f in frames]
+        labels_by_frame: dict[str, list] = {fid: [] for fid in frame_ids}
+        if frame_ids:
+            for lab in db.execute(select(Label).where(Label.frame_id.in_(frame_ids))).scalars().all():
+                labels_by_frame[lab.frame_id].append({
+                    "source": lab.source,
+                    "class_id": lab.class_id,
+                    "x_center": lab.x_center,
+                    "y_center": lab.y_center,
+                    "width": lab.width,
+                    "height": lab.height,
+                    "confidence": lab.confidence,
+                })
+
+        items = [{
+            "id": f.id,
+            "frame_index": f.frame_index,
+            "timestamp_s": f.timestamp_s,
+            "width": f.width,
+            "height": f.height,
+            "queue": f.queue,
+            "status": f.status,
+            "has_ball": f.has_ball,
+            "image_url": f"{API_PREFIX}/frames/{f.id}/image",
+            "labels": labels_by_frame[f.id],
+        } for f in frames]
+
+    return {
+        "page": page,
+        "size": page_size,
+        "total": total,
+        "video": {"id": video.id, "title": video.title},
+        "items": items,
+    }
+
+
+@app.post(f"{API_PREFIX}/frames/{{frame_id}}/clear")
+def clear_frame(frame_id: str):
+    with SessionLocal() as db:
+        frame = db.execute(select(Frame).where(Frame.id == frame_id)).scalar_one_or_none()
+        if not frame:
+            raise HTTPException(status_code=404, detail="frame not found")
+        db.execute(delete(Label).where(Label.frame_id == frame.id, Label.source == "human"))
+        frame.status = "processed"
+        frame.has_ball = False
+        db.commit()
+        return {"id": frame.id, "status": frame.status, "has_ball": frame.has_ball}
+
+
+@app.delete(f"{API_PREFIX}/frames/{{frame_id}}")
+def delete_frame(frame_id: str):
+    with SessionLocal() as db:
+        frame = db.execute(select(Frame).where(Frame.id == frame_id)).scalar_one_or_none()
+        if not frame:
+            raise HTTPException(status_code=404, detail="frame not found")
+        video_id = frame.video_id
+        db.execute(delete(Label).where(Label.frame_id == frame.id))
+        db.execute(delete(ModelTrainedFrame).where(ModelTrainedFrame.frame_id == frame.id))
+        db.execute(Event.__table__.update().where(Event.frame_id == frame.id).values(frame_id=None))
+        video = db.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
+        if video and video.frame_count > 0:
+            video.frame_count -= 1
+        db.delete(frame)
+        db.commit()
+    storage.absolute(storage.frame_path(video_id, frame_id)).unlink(missing_ok=True)
+    return {"deleted": frame_id}
 
 
 @app.get(f"{API_PREFIX}/settings")

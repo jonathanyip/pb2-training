@@ -1,2 +1,0 @@
-pb2app
-pb2core

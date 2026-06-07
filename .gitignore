@@ -1,7 +1,46 @@
+# ── Python ───────────────────────────────────
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
 *.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── App data & generated artifacts ───────────
 /data/
 runs/
 weights/
+
+# ── Model weights ────────────────────────────
+*.pt
+*.pth
+*.onnx
+
+# ── Databases ────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+
+# ── Video / media files (never commit footage) ─
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.flv
+*.m4v
+*.wmv
+
+# ── Logs & temp ──────────────────────────────
+*.log
+*.tmp
+
+# ── Editor / OS noise ────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

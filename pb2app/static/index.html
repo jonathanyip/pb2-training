@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>pb2-training</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="static/styles.css" />
 </head>
 <body>
   <header class="topbar">
@@ -16,6 +16,7 @@
       <button class="tab-btn active" data-tab="upload">Upload</button>
       <button class="tab-btn" data-tab="train">Train</button>
       <button class="tab-btn" data-tab="validate">Validate</button>
+      <button class="tab-btn" data-tab="explorer">Explorer</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
     </nav>
     <div class="topbar-right" id="topbarRight"></div>
@@ -98,7 +99,8 @@
           <p class="muted">Click &amp; drag on the image to draw a box around the ball. No box means “no ball”.</p>
           <ul class="hotkeys">
             <li><button class="hk" data-kind="training" data-act="undo"><kbd>A</kbd></button><span>Back / Undo</span></li>
-            <li><button class="hk" data-kind="training" data-act="reset"><kbd>W</kbd></button><span>Reset box</span></li>
+            <li><button class="hk" data-kind="training" data-act="reset"><kbd>W</kbd></button><span>No ball</span></li>
+            <li><button class="hk" data-kind="training" data-act="clear"><kbd>S</kbd></button><span>No ball</span></li>
             <li><button class="hk hk-primary" data-kind="training" data-act="save"><kbd>D</kbd></button><span>Next / Save</span></li>
           </ul>
           <div class="queue-stat">
@@ -120,16 +122,75 @@
         </div>
         <aside class="instructions">
           <h3>How to use</h3>
-          <p class="muted">The box is the model’s guess. Confirm it, fix it, or clear it (<kbd>W</kbd>) if it isn’t the ball.</p>
+          <p class="muted">The box is the model’s guess. Confirm it, redraw it, reset it (<kbd>W</kbd>), or mark “no ball” (<kbd>S</kbd>).</p>
           <ul class="hotkeys">
             <li><button class="hk" data-kind="validation" data-act="undo"><kbd>A</kbd></button><span>Back / Undo</span></li>
             <li><button class="hk" data-kind="validation" data-act="reset"><kbd>W</kbd></button><span>Reset box</span></li>
+            <li><button class="hk" data-kind="validation" data-act="clear"><kbd>S</kbd></button><span>No ball</span></li>
             <li><button class="hk hk-primary" data-kind="validation" data-act="save"><kbd>D</kbd></button><span>Approve / Next</span></li>
           </ul>
           <div class="queue-stat">
             Validation queue: <strong id="validationRemaining">—</strong>
           </div>
         </aside>
+      </div>
+    </section>
+
+    <!-- ───────────────────────── Explorer ───────────────────────── -->
+    <section id="tab-explorer" class="tab">
+      <!-- Video list -->
+      <div class="card" id="explorerVideos">
+        <div class="card-head">
+          <h2>Browse labels <span class="count-pill" id="explorerVideoCount">0</span></h2>
+          <div class="list-controls">
+            <input id="explorerSearch" class="search" type="search" placeholder="Search by title…" />
+            <button class="btn" id="explorerRefreshBtn" title="Refresh">↻</button>
+          </div>
+        </div>
+        <p class="muted">Pick a video to inspect its processed frames, then re-open, mark “no ball”, or delete any frame.</p>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th>Title</th><th>Source</th><th>Frames</th><th>Queues</th><th>Status</th><th>Added</th></tr>
+            </thead>
+            <tbody id="explorerVideosBody"></tbody>
+          </table>
+        </div>
+        <div id="explorerVideosEmpty" class="empty hidden">
+          <p>No videos yet.</p>
+          <p class="muted">Add and process a video first.</p>
+        </div>
+        <div class="pager" id="explorerVideosPager"></div>
+      </div>
+
+      <!-- Frame grid -->
+      <div class="card hidden" id="explorerFrames">
+        <div class="card-head">
+          <h2>
+            <button class="btn btn-icon" id="explorerBackBtn" title="Back to videos">‹</button>
+            <span id="explorerFramesTitle">Frames</span>
+            <span class="count-pill" id="explorerFrameCount">0</span>
+          </h2>
+          <button class="btn" id="explorerFramesRefreshBtn" title="Refresh">↻</button>
+        </div>
+        <div class="explorer-filters">
+          <div class="seg" data-filter="status">
+            <button class="seg-btn active" data-value="">All</button>
+            <button class="seg-btn" data-value="processed">Processed</button>
+            <button class="seg-btn" data-value="unprocessed">Unprocessed</button>
+          </div>
+          <div class="seg" data-filter="has_ball">
+            <button class="seg-btn active" data-value="">Any</button>
+            <button class="seg-btn" data-value="true">Ball</button>
+            <button class="seg-btn" data-value="false">No ball</button>
+            <button class="seg-btn" data-value="unknown">Unreviewed</button>
+          </div>
+        </div>
+        <div id="explorerGrid" class="frame-grid"></div>
+        <div id="explorerFramesEmpty" class="empty hidden">
+          <p>No frames match these filters.</p>
+        </div>
+        <div class="pager" id="explorerFramesPager"></div>
       </div>
     </section>
 
@@ -160,6 +221,6 @@
 
   <div id="toasts" class="toasts"></div>
 
-  <script src="/static/app.js"></script>
+  <script src="static/app.js"></script>
 </body>
 </html>

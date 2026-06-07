@@ -1,6 +1,9 @@
 'use strict';
 
-const API = '/api/v1';
+// Base path the app is hosted under (e.g. "/pb2-training"), injected by the
+// server into index.html. Empty string when hosted at the domain root.
+const BASE_PATH = (typeof window !== 'undefined' && window.__BASE_PATH__) || '';
+const API = `${BASE_PATH}/api/v1`;
 const CANVAS_W = 960;
 const CANVAS_H = 540;
 
@@ -12,6 +15,13 @@ const state = {
   validation: newLabelState(),
   settings: { values: {}, schema: {}, defaults: {}, dirty: {} },
   models: { items: [], active: null, selected: null },
+  explorer: {
+    view: 'videos',
+    videos: { page: 1, size: 24, total: 0, q: '' },
+    video: null,
+    frames: { page: 1, size: 24, total: 0 },
+    filter: { status: '', has_ball: '' },
+  },
 };
 
 function newLabelState() {
@@ -61,9 +71,11 @@ function showTab(name) {
   $all('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
   $all('.tab').forEach((t) => t.classList.toggle('active', t.id === `tab-${name}`));
   stopPolling();
+  document.body.classList.toggle('labeling-active', name === 'train' || name === 'validate');
   if (name === 'upload') { loadVideos(); startPolling(); }
   if (name === 'train') loadNext('training');
   if (name === 'validate') loadNext('validation');
+  if (name === 'explorer') showExplorer();
   if (name === 'settings') loadSettingsTab();
 }
 
@@ -318,7 +330,16 @@ function updateQueueStat(kind) {
 function resetBox(kind) {
   const s = state[kind];
   if (!s.frame) return;
-  s.box = s.originalBox ? { ...s.originalBox } : null;
+  // Training frames have no model guess to reset to, so "reset" means "no ball"
+  // (same as clear). Validation resets back to the saved/guessed box.
+  s.box = (kind === 'training') ? null : (s.originalBox ? { ...s.originalBox } : null);
+  drawFrame(kind);
+}
+
+function clearBox(kind) {
+  const s = state[kind];
+  if (!s.frame) return;
+  s.box = null;
   drawFrame(kind);
 }
 
@@ -364,6 +385,7 @@ function setupLabeler() {
     const { kind, act } = btn.dataset;
     if (act === 'undo') undoCurrent(kind);
     if (act === 'reset') resetBox(kind);
+    if (act === 'clear') clearBox(kind);
     if (act === 'save') saveNext(kind);
   }));
   document.addEventListener('keydown', (e) => {
@@ -373,6 +395,7 @@ function setupLabeler() {
     const k = e.key.toLowerCase();
     if (k === 'a') { e.preventDefault(); undoCurrent(kind); }
     if (k === 'w') { e.preventDefault(); resetBox(kind); }
+    if (k === 's') { e.preventDefault(); clearBox(kind); }
     if (k === 'd') { e.preventDefault(); saveNext(kind); }
   });
 }
@@ -496,11 +519,210 @@ async function resetSettings() {
   } catch (err) { toast(err.message, 'error'); }
 }
 
+/* ── Explorer tab ────────────────────────────── */
+function showExplorer() {
+  if (state.explorer.view === 'frames' && state.explorer.video) {
+    enterFramesView();
+  } else {
+    enterVideosView();
+  }
+}
+
+function enterVideosView() {
+  state.explorer.view = 'videos';
+  $('#explorerVideos').classList.remove('hidden');
+  $('#explorerFrames').classList.add('hidden');
+  loadExplorerVideos();
+}
+
+async function loadExplorerVideos() {
+  const { page, q } = state.explorer.videos;
+  const params = new URLSearchParams({ page });
+  if (q) params.set('q', q);
+  let data;
+  try { data = await api(`/videos?${params}`); } catch (err) { toast(err.message, 'error'); return; }
+  state.explorer.videos.total = data.total;
+  state.explorer.videos.size = data.size;
+  renderExplorerVideos(data.items);
+}
+
+function renderExplorerVideos(items) {
+  const body = $('#explorerVideosBody');
+  body.innerHTML = '';
+  $('#explorerVideoCount').textContent = state.explorer.videos.total;
+  $('#explorerVideosEmpty').classList.toggle('hidden', items.length > 0);
+
+  for (const v of items) {
+    const qb = v.queue_breakdown || { training: 0, validation: 0 };
+    const row = el('tr', { class: 'clickable', onclick: () => openVideoFrames(v) },
+      el('td', { class: 'title', title: v.title }, v.title),
+      el('td', {}, v.source_type),
+      el('td', {}, String(v.frame_count)),
+      el('td', { class: 'queue-chip', html: `<b>${qb.training}</b> train · <b>${qb.validation}</b> val` }),
+      el('td', {}, el('span', { class: `badge ${v.status}` }, v.status)),
+      el('td', { class: 'muted' }, fmtDate(v.created_at)),
+    );
+    body.append(row);
+  }
+  renderExplorerVideosPager();
+}
+
+function renderExplorerVideosPager() {
+  const { page, size, total } = state.explorer.videos;
+  const pages = Math.max(1, Math.ceil(total / size));
+  const pager = $('#explorerVideosPager');
+  pager.innerHTML = '';
+  if (pages <= 1) return;
+  pager.append(
+    el('button', { class: 'btn btn-icon', disabled: page <= 1 ? '' : null, onclick: () => { state.explorer.videos.page--; loadExplorerVideos(); } }, '‹'),
+    el('span', {}, `Page ${page} / ${pages}`),
+    el('button', { class: 'btn btn-icon', disabled: page >= pages ? '' : null, onclick: () => { state.explorer.videos.page++; loadExplorerVideos(); } }, '›'),
+  );
+}
+
+function openVideoFrames(v) {
+  state.explorer.video = { id: v.id, title: v.title };
+  state.explorer.frames.page = 1;
+  state.explorer.filter = { status: '', has_ball: '' };
+  $all('#explorerFrames .seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.value === ''));
+  enterFramesView();
+}
+
+function enterFramesView() {
+  state.explorer.view = 'frames';
+  $('#explorerVideos').classList.add('hidden');
+  $('#explorerFrames').classList.remove('hidden');
+  $('#explorerFramesTitle').textContent = state.explorer.video.title;
+  loadExplorerFrames();
+}
+
+async function loadExplorerFrames() {
+  const { video, frames, filter } = state.explorer;
+  if (!video) return;
+  const params = new URLSearchParams({ page: frames.page });
+  if (filter.status) params.set('status', filter.status);
+  if (filter.has_ball) params.set('has_ball', filter.has_ball);
+  let data;
+  try { data = await api(`/videos/${video.id}/frames?${params}`); } catch (err) { toast(err.message, 'error'); return; }
+  state.explorer.frames.total = data.total;
+  state.explorer.frames.size = data.size;
+  renderExplorerFrames(data.items);
+}
+
+function renderExplorerFrames(items) {
+  const grid = $('#explorerGrid');
+  grid.innerHTML = '';
+  $('#explorerFrameCount').textContent = state.explorer.frames.total;
+  $('#explorerFramesEmpty').classList.toggle('hidden', items.length > 0);
+  for (const f of items) grid.append(renderFrameCard(f));
+  renderExplorerFramesPager();
+}
+
+function frameVerdict(f) {
+  if (f.status !== 'processed') return { text: 'unreviewed', cls: 'pending' };
+  if (f.has_ball) return { text: 'ball', cls: 'ready' };
+  return { text: 'no ball', cls: 'queued' };
+}
+
+function renderFrameCard(f) {
+  const canvas = el('canvas', { class: 'frame-thumb', width: 240, height: 135 });
+  const img = new Image();
+  img.onload = () => drawThumb(canvas, img, f.labels);
+  img.src = f.image_url;
+
+  const verdict = frameVerdict(f);
+  const meta = el('div', { class: 'frame-card-meta' },
+    el('span', { class: 'muted', title: f.id }, `#${f.frame_index}`),
+    el('span', { class: `badge ${verdict.cls}` }, verdict.text),
+  );
+
+  const actions = el('div', { class: 'frame-card-actions' },
+    el('button', { class: 'btn btn-icon', title: 'Re-open for labeling', onclick: () => explorerReset(f.id) }, '↺'),
+    el('button', { class: 'btn btn-icon', title: 'Mark “no ball”', onclick: () => explorerClear(f.id) }, '⦸'),
+    el('button', { class: 'btn btn-icon btn-danger', title: 'Delete frame', onclick: () => explorerDelete(f.id, f.frame_index) }, '🗑'),
+  );
+
+  return el('div', { class: 'frame-card' }, canvas, meta, actions);
+}
+
+function drawThumb(canvas, img, labels) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(img, 0, 0, W, H);
+  for (const l of labels || []) {
+    const human = l.source === 'human';
+    ctx.strokeStyle = human ? '#4f8cff' : '#f0b429';
+    ctx.lineWidth = 2;
+    const x = (l.x_center - l.width / 2) * W;
+    const y = (l.y_center - l.height / 2) * H;
+    ctx.strokeRect(x, y, l.width * W, l.height * H);
+  }
+}
+
+function renderExplorerFramesPager() {
+  const { page, size, total } = state.explorer.frames;
+  const pages = Math.max(1, Math.ceil(total / size));
+  const pager = $('#explorerFramesPager');
+  pager.innerHTML = '';
+  if (pages <= 1) return;
+  pager.append(
+    el('button', { class: 'btn btn-icon', disabled: page <= 1 ? '' : null, onclick: () => { state.explorer.frames.page--; loadExplorerFrames(); } }, '‹'),
+    el('span', {}, `Page ${page} / ${pages}`),
+    el('button', { class: 'btn btn-icon', disabled: page >= pages ? '' : null, onclick: () => { state.explorer.frames.page++; loadExplorerFrames(); } }, '›'),
+  );
+}
+
+async function explorerReset(id) {
+  try { await api(`/frames/${id}/reopen`, { method: 'POST' }); toast('Frame re-opened for labeling', 'success'); await loadExplorerFrames(); }
+  catch (err) { toast(err.message, 'error'); }
+}
+
+async function explorerClear(id) {
+  try { await api(`/frames/${id}/clear`, { method: 'POST' }); toast('Frame marked “no ball”', 'success'); await loadExplorerFrames(); }
+  catch (err) { toast(err.message, 'error'); }
+}
+
+async function explorerDelete(id, idx) {
+  if (!confirm(`Delete frame #${idx}? It will no longer be used for training.`)) return;
+  try { await api(`/frames/${id}`, { method: 'DELETE' }); toast('Frame deleted', 'success'); await loadExplorerFrames(); }
+  catch (err) { toast(err.message, 'error'); }
+}
+
+function setupExplorer() {
+  $('#explorerRefreshBtn').addEventListener('click', loadExplorerVideos);
+  $('#explorerFramesRefreshBtn').addEventListener('click', loadExplorerFrames);
+  $('#explorerBackBtn').addEventListener('click', enterVideosView);
+
+  let searchTimer = null;
+  $('#explorerSearch').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.explorer.videos.q = e.target.value.trim();
+      state.explorer.videos.page = 1;
+      loadExplorerVideos();
+    }, 250);
+  });
+
+  $('#explorerFrames').addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn) return;
+    const group = btn.closest('.seg');
+    const filter = group.dataset.filter;
+    group.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    state.explorer.filter[filter] = btn.dataset.value;
+    state.explorer.frames.page = 1;
+    loadExplorerFrames();
+  });
+}
+
 /* ── Bootstrap ───────────────────────────────── */
 function init() {
   $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('.tab-btn'); if (b) showTab(b.dataset.tab); });
   setupUpload();
   setupLabeler();
+  setupExplorer();
   $('#setActiveBtn').addEventListener('click', setActiveModel);
   $('#saveSettingsBtn').addEventListener('click', saveSettings);
   $('#resetSettingsBtn').addEventListener('click', resetSettings);

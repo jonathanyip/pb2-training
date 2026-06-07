@@ -20,11 +20,29 @@ def _load_yaml() -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def normalize_base_path(value: str | None) -> str:
+    """Normalize a URL base path.
+
+    Returns "" for root hosting, or "/segment[/segment...]" with a leading
+    slash and no trailing slash (e.g. "pb2-training/" -> "/pb2-training").
+    """
+    p = (value or "").strip()
+    if not p or p == "/":
+        return ""
+    if not p.startswith("/"):
+        p = "/" + p
+    return p.rstrip("/")
+
+
 def get_bootstrap_config() -> dict[str, Any]:
     y = _load_yaml()
     storage_root = y.get("storage", {}).get("root", "./data")
     db_url = y.get("database", {}).get("url", "sqlite:///./data/db.sqlite3")
     server = y.get("server", {})
+    # Base path lets the app be hosted under a sub-path behind a reverse proxy
+    # (e.g. https://example.com/pb2-training). The PB2_BASE_PATH env var wins,
+    # which is convenient for docker-compose integrations.
+    base_path = normalize_base_path(os.getenv("PB2_BASE_PATH", server.get("base_path", "")))
     return {
         "storage": {"root": storage_root},
         "database": {"url": db_url},
@@ -32,6 +50,7 @@ def get_bootstrap_config() -> dict[str, Any]:
             "host": server.get("host", "0.0.0.0"),
             "port": server.get("port", 8000),
             "cors_origins": server.get("cors_origins", ["*"]),
+            "base_path": base_path,
         },
     }
 

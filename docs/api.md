@@ -110,7 +110,53 @@ Queue size for the header badge (e.g. `queue=training&status=unprocessed`).
 { "count": 842 }
 ```
 
-## Settings (Tab 4)
+## Explorer (Tab 4)
+
+The Explorer tab browses already-sampled frames per video so you can spot-check
+and prune labeling data.
+
+### `GET /videos/{video_id}/frames?page=&size=&status=&queue=&has_ball=`
+Paginated frames for one video plus all their labels (both `model` and `human`
+sources) so the grid can draw boxes on each thumbnail. Filters are optional:
+`status=unprocessed|processed`, `queue=training|validation`, and
+`has_ball=true|false|unknown` (`unknown` = never human-reviewed, i.e.
+`has_ball IS NULL`).
+```json
+{
+  "page": 1, "size": 24, "total": 412,
+  "video": { "id": "uuid", "title": "finals_5" },
+  "items": [
+    { "id": "uuid", "frame_index": 12, "timestamp_s": 6.0,
+      "width": 1920, "height": 1080, "queue": "validation",
+      "status": "processed", "has_ball": true,
+      "image_url": "/api/v1/frames/uuid/image",
+      "labels": [ { "source": "model", "class_id": 0, "x_center": 0.51,
+                    "y_center": 0.33, "width": 0.04, "height": 0.06,
+                    "confidence": 0.78 },
+                  { "source": "human", "class_id": 0, "x_center": 0.50,
+                    "y_center": 0.34, "width": 0.045, "height": 0.06,
+                    "confidence": null } ] }
+  ]
+}
+```
+
+### `POST /frames/{id}/clear`
+Mark a frame as reviewed with **no ball**: deletes its `source=human` labels and
+sets `status=processed`, `has_ball=false`. Used by the Explorer "no ball" action.
+```json
+{ "id": "uuid", "status": "processed", "has_ball": false }
+```
+
+### `DELETE /frames/{id}`
+Permanently remove a single frame so it is no longer used for training: deletes
+its labels and `model_trained_frames` rows, nulls any `events.frame_id`
+references, decrements the owning video's `frame_count`, and removes the JPEG
+file.
+```json
+{ "deleted": "uuid" }
+```
+
+## Settings (Tab 5)
 
 ### `GET /settings`
 Returns the effective runtime settings from the `settings` table (see

@@ -30,10 +30,11 @@ drill down as needed.
 | 7 | [ui-upload.md](./ui-upload.md) | Tab 1 — Upload UX & paginated video list |
 | 8 | [ui-training.md](./ui-training.md) | Tab 2 — Train UX, bounding-box drawing, WASD hotkeys |
 | 9 | [ui-validation.md](./ui-validation.md) | Tab 3 — Validate UX, pre-populated boxes |
-| 10 | [ui-settings.md](./ui-settings.md) | Tab 4 — Settings UX, DB-backed config, active-model selection |
-| 11 | [api.md](./api.md) | Backend HTTP API reference |
-| 12 | [cli.md](./cli.md) | CLI tool: bootstrap, incremental training, model upgrade, re-analysis |
-| 13 | [deployment.md](./deployment.md) | Docker / docker-compose, volumes, env vars |
+| 10 | [ui-explorer.md](./ui-explorer.md) | Tab 4 — Explorer UX, per-video frame grid, reset/clear/delete |
+| 11 | [ui-settings.md](./ui-settings.md) | Tab 5 — Settings UX, DB-backed config, active-model selection |
+| 12 | [api.md](./api.md) | Backend HTTP API reference |
+| 13 | [cli.md](./cli.md) | CLI tool: bootstrap, incremental training, model upgrade, re-analysis |
+| 14 | [deployment.md](./deployment.md) | Docker / docker-compose, volumes, env vars |
 
 ## Design principles
 

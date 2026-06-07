@@ -1,2 +1,0 @@
-[console_scripts]
-pb2 = pb2app.cli:app

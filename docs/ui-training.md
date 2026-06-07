@@ -36,7 +36,11 @@ without memorizing them (satisfies the "easy to read instructions" requirement).
 
 ## Drawing the box
 
-- The image is rendered on an HTML canvas. **Click-drag** draws a rectangle; that
+- The image is rendered on an HTML canvas that expands to fill the browser
+  window — on the Train and Validate tabs the layout breaks out of the normal
+  centered width and the frame is sized as large as the window allows (capped by
+  height so the whole 16:9 frame stays visible) to make the small, fast-moving
+  ball easy to spot. **Click-drag** draws a rectangle; that
   rectangle is the ball's bounding box.
 - The box can be re-drawn (a new drag replaces the current box). Pickleball
   frames have at most one ball, so a single box is expected.

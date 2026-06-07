@@ -1,20 +1,14 @@
 services:
   api:
     build: .
-    command: uvicorn pb2app.main:app --host 0.0.0.0 --port 8000
+    image: pb2-training
     ports:
       - "8000:8000"
-    environment:
-      - PB2_CONFIG=/data/config.yaml
+    # All state (DB, videos, frames, models, datasets) lives in /data, which is
+    # backed by the named volume below so it survives container rebuilds.
     volumes:
-      - ./config.yaml:/data/config.yaml:ro
-      - ./data:/data
+      - pb2-data:/data
+    restart: unless-stopped
 
-  worker:
-    build: .
-    command: python -m pb2app.worker
-    environment:
-      - PB2_CONFIG=/data/config.yaml
-    volumes:
-      - ./config.yaml:/data/config.yaml:ro
-      - ./data:/data
+volumes:
+  pb2-data:
