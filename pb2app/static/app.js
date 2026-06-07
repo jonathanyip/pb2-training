@@ -135,19 +135,72 @@ async function addUrls() {
   } catch (err) { toast(err.message, 'error'); }
 }
 
+function fmtBytes(n) {
+  if (n < 1024) return `${n} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < units.length - 1);
+  return `${n.toFixed(1)} ${units[i]}`;
+}
+
+function uploadWithProgress(path, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API}${path}`);
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) onProgress(e.loaded, e.total);
+    });
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.responseText ? JSON.parse(xhr.responseText) : null);
+      } else {
+        let detail = xhr.statusText;
+        try { detail = JSON.parse(xhr.responseText).detail || detail; } catch (_) { /* ignore */ }
+        reject(new Error(detail));
+      }
+    });
+    xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
+    xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+    xhr.send(formData);
+  });
+}
+
 async function uploadFile() {
   const file = $('#uploadFile').files[0];
   if (!file) return;
   const form = new FormData();
   form.append('file', file);
   $('#uploadBtn').disabled = true;
+
+  const wrap = $('#uploadProgress');
+  const fill = $('#uploadProgressFill');
+  const label = $('#uploadProgressLabel');
+  wrap.classList.remove('hidden');
+  fill.style.width = '0%';
+  fill.classList.remove('done');
+  label.textContent = 'Uploading… 0%';
+
   try {
-    await api('/videos/upload', { method: 'POST', body: form });
+    await uploadWithProgress('/videos/upload', form, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      fill.style.width = `${pct}%`;
+      label.textContent = pct >= 100
+        ? 'Processing on server…'
+        : `Uploading… ${pct}% (${fmtBytes(loaded)} / ${fmtBytes(total)})`;
+    });
+    fill.style.width = '100%';
+    fill.classList.add('done');
+    label.textContent = 'Done';
     toast(`Uploaded ${file.name}`, 'success');
     $('#uploadFile').value = '';
     onFilePicked();
     await loadVideos();
-  } catch (err) { toast(err.message, 'error'); $('#uploadBtn').disabled = false; }
+    setTimeout(() => wrap.classList.add('hidden'), 1200);
+  } catch (err) {
+    toast(err.message, 'error');
+    label.textContent = `Failed: ${err.message}`;
+    $('#uploadBtn').disabled = false;
+  }
 }
 
 async function loadVideos() {
@@ -233,13 +286,22 @@ function drawFrame(kind) {
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
   if (!s.img) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); return; }
   ctx.drawImage(s.img, 0, 0, CANVAS_W, CANVAS_H);
-  if (s.box) {
-    ctx.strokeStyle = '#ff4d4d';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(s.box.x, s.box.y, s.box.w, s.box.h);
-    ctx.fillStyle = 'rgba(255,77,77,0.12)';
-    ctx.fillRect(s.box.x, s.box.y, s.box.w, s.box.h);
-  }
+  if (s.box) drawBox(ctx, s.box);
+}
+
+// High-contrast box: a white "halo" stroke under a red stroke (readable on both
+// bright and dark frames), plus a faint red fill to make the region pop.
+function drawBox(ctx, box) {
+  const { x, y, w, h } = box;
+  ctx.fillStyle = 'rgba(255,77,77,0.14)';
+  ctx.fillRect(x, y, w, h);
+  ctx.lineJoin = 'miter';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x, y, w, h);
+  ctx.strokeStyle = '#ff2d2d';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
 }
 
 function canvasPos(canvas, evt) {
