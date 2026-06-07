@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 import shutil
 import uuid
 from pathlib import Path
@@ -25,10 +24,21 @@ def export_dataset(db, frame_ids: set[str] | None = None) -> str:
         if not frame_ids:
             return export_id
         q = q.where(Frame.id.in_(frame_ids))
-    frames = db.execute(q).scalars().all()
+    # Deterministic ordering so the train/val split is reproducible and so we
+    # can guarantee at least one image lands in each split (a random split can
+    # otherwise produce an empty val set for small incremental batches and
+    # crash training).
+    frames = sorted(db.execute(q).scalars().all(), key=lambda f: f.id)
 
-    for f in frames:
-        split = "val" if random.random() < val_split else "train"
+    n = len(frames)
+    n_val = int(round(n * val_split))
+    if n >= 2:
+        n_val = min(max(n_val, 1), n - 1)
+    else:
+        n_val = 0
+
+    for i, f in enumerate(frames):
+        split = "val" if i < n_val else "train"
         src = storage.absolute(storage.frame_path(f.video_id, f.id))
         dst = base / "images" / split / f"{f.id}.jpg"
         shutil.copyfile(src, dst)
@@ -40,7 +50,7 @@ def export_dataset(db, frame_ids: set[str] | None = None) -> str:
                 out.write(f"0 {l.x_center} {l.y_center} {l.width} {l.height}\n")
 
     (base / "data.yaml").write_text(
-        "path: .\ntrain: images/train\nval: images/val\nnames: [ball]\n",
+        f"path: {base}\ntrain: images/train\nval: images/val\nnc: 1\nnames: [ball]\n",
         encoding="utf-8",
     )
     return export_id

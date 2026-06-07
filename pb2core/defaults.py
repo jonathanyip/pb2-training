@@ -10,7 +10,7 @@ DEFAULT_RUNTIME_SETTINGS = {
     "sampling.image_format": "jpg",
     "sampling.jpeg_quality": 90,
     "sampling.max_frames_per_video": None,
-    "model.bootstrap_weights": "yolov8n.pt",
+    "model.bootstrap_weights": "LibreYOLO9t.pt",
     "model.ball_class_id": 32,
     "model.inference.conf_threshold": 0.25,
     "model.inference.iou_threshold": 0.45,
@@ -22,10 +22,14 @@ DEFAULT_RUNTIME_SETTINGS = {
     "labeling.autosave": True,
     "ui.pagination_size": 24,
     "ui.poll_interval_ms": 2000,
-    "training.base_weights": "yolov8n.pt",
+    "training.base_weights": "LibreYOLO9t.pt",
     "training.epochs": 100,
     "training.imgsz": 640,
     "training.batch": 16,
+    # Dataloader worker processes. 0 loads in the main process, which avoids
+    # multiprocessing crashes (e.g. macOS spawn / tiny datasets); raise on
+    # Linux GPU hosts for throughput.
+    "training.workers": 0,
     "training.val_split": 0.15,
     "training.device": "auto",
     "training.project_dir": "./data/datasets",

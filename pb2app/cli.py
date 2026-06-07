@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import typer
@@ -28,7 +29,10 @@ def migrate() -> None:
 
 
 @app.command()
-def bootstrap(name: str = "bootstrap", weights: str = "yolov8n.pt") -> None:
+def bootstrap(
+    name: str = typer.Option("bootstrap", "--name"),
+    weights: str = typer.Option("LibreYOLO9t.pt", "--weights"),
+) -> None:
     init_db()
     with SessionLocal() as db:
         exists = db.execute(select(Model).where(Model.name == name)).scalar_one_or_none()
@@ -38,7 +42,14 @@ def bootstrap(name: str = "bootstrap", weights: str = "yolov8n.pt") -> None:
         max_version = db.execute(select(Model.version).order_by(Model.version.desc())).scalars().first()
         version = 0 if max_version is None else max_version + 1
         path = storage.model_path(version)
-        storage.absolute(path).write_text(f"bootstrap weights: {weights}\n", encoding="utf-8")
+        src = Path(weights)
+        if src.exists() and src.is_file():
+            # Local weights file: copy it into the models store as vNNNN.pt.
+            shutil.copyfile(src, storage.absolute(path))
+        else:
+            # An auto-downloadable LibreYOLO checkpoint name (e.g. LibreYOLO9t.pt);
+            # base_weights stays authoritative and the detector resolves it on load.
+            storage.absolute(path).write_text(f"bootstrap weights ref: {weights}\n", encoding="utf-8")
         m = Model(name=name, version=version, path=str(path), is_bootstrap=True, base_weights=weights)
         if db.execute(select(Model).where(Model.is_active.is_(True))).scalar_one_or_none() is None:
             m.is_active = True
@@ -56,7 +67,11 @@ def export_cmd(out_id: str = "auto") -> None:
 
 
 @app.command()
-def train(name: str, from_: str = typer.Option(None, "--from"), full: bool = False) -> None:
+def train(
+    name: str = typer.Option(..., "--name"),
+    from_: str = typer.Option(None, "--from"),
+    full: bool = typer.Option(False, "--full"),
+) -> None:
     init_db()
     with SessionLocal() as db:
         m = train_model(db, name=name, parent_name_or_version=from_, full=full)

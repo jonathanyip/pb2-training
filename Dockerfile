@@ -1,5 +1,10 @@
 FROM python:3.11-slim
 
+# ffmpeg/ffprobe are required for video probing and frame sampling.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY pyproject.toml README.md /app/
 COPY pb2core /app/pb2core
